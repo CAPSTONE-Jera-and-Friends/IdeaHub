@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+
+{% block title %}Add Order{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <h3 class="mb-4">Add Order</h3>
+
+    <div class="row">
+
+        <!-- MENU -->
+        <div class="col-md-8">
+            <h5>Menu</h5>
+            <div id="menu-container" class="row"></div>
+        </div>
+
+        <!-- CART -->
+        <div class="col-md-4">
+            <h5>Cart</h5>
+
+            <ul id="cart-list" class="list-group mb-3"></ul>
+
+            <h5>Total: ₱<span id="total">0.00</span></h5>
+
+            <button class="btn btn-success w-100 mt-3" onclick="submitOrder()">
+                Place Order
+            </button>
+
+            <button class="btn btn-secondary w-100 mt-2" onclick="goBack()">
+                Back
+            </button>
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script>
+
+const sessionId = parseInt("{{ session_id }}");
+let cart = [];
+
+// LOAD MENU
+function loadMenu() {
+
+    fetch("/api/menu", {
+        credentials: "include"
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        let container = document.getElementById("menu-container");
+        container.innerHTML = "";
+
+        data.forEach(item => {
+
+            let card = `
+                <div class="col-md-4 mb-3">
+                    <div class="card shadow-sm p-3">
+
+                        <h5>${item.name}</h5>
+                        <p>₱${item.price}</p>
+
+                        <button class="btn btn-primary btn-sm"
+                            onclick="addToCart(${item.id}, '${item.name}', ${item.price})">
+                            Add
+                        </button>
+
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML += card;
+        });
+
+    });
+}
+
+
+// ADD TO CART
+function addToCart(id, name, price) {
+
+    let existing = cart.find(item => item.id === id);
+
+    if (existing) {
+        existing.quantity += 1;
+    } else {
+        cart.push({ id, name, price, quantity: 1 });
+    }
+
+    renderCart();
+}
+
+
+// RENDER CART
+function renderCart() {
+
+    let list = document.getElementById("cart-list");
+    let total = 0;
+
+    list.innerHTML = "";
+
+    cart.forEach(item => {
+
+        let itemTotal = item.price * item.quantity;
+        total += itemTotal;
+
+        list.innerHTML += `
+            <li class="list-group-item d-flex justify-content-between">
+                ${item.name} x${item.quantity}
+                <span>₱${itemTotal.toFixed(2)}</span>
+            </li>
+        `;
+    });
+
+    document.getElementById("total").innerText = total.toFixed(2);
+}
+
+
+// 🔥 SUBMIT ORDER
+function submitOrder() {
+
+    if (cart.length === 0) {
+        alert("Cart is empty!");
+        return;
+    }
+
+    let items = cart.map(item => ({
+        menu_item_id: item.id,
+        quantity: item.quantity
+    }));
+
+    fetch("/api/add-order", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({
+            session_id: sessionId,
+            items: items
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        alert("Order placed successfully!");
+
+        window.location.href = "/dashboard";
+
+    });
+}
+
+
+// 🔙 BACK BUTTON
+function goBack() {
+    window.location.href = "/dashboard";
+}
+
+
+// LOAD MENU ON PAGE LOAD
+loadMenu();
+
+</script>
+
+{% endblock %}

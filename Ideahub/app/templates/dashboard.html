@@ -1,0 +1,336 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <div>
+            <h3 class="mb-0">Active Customer Sessions</h3>
+            <small id="session-count" class="text-muted">0 customers</small>
+        </div>
+
+        <input 
+            type="text" 
+            id="searchInput" 
+            class="form-control w-25" 
+            placeholder="Search customer..."
+            oninput="loadSessions()"
+        >
+
+    </div>
+
+    <div id="sessions-container" class="row"></div>
+
+    <div id="empty-message" class="text-center mt-4 text-muted" style="display:none;">
+        There is no Customer at the moment.
+    </div>
+
+</div>
+
+<!-- RECEIPT MODAL -->
+<div class="modal fade" id="receiptModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Order Summary</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="receipt-body"></div>
+
+      <div class="modal-footer d-flex justify-content-between">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-success" id="confirmCheckoutBtn">Checkout</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- CHECK-IN MODAL -->
+<div class="modal fade" id="checkinModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">New Customer Check-in</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <input type="text" id="customerName" class="form-control mb-2" placeholder="Customer Name">
+        <input type="text" id="school" class="form-control mb-2" placeholder="School">
+        <input type="text" id="course" class="form-control mb-2" placeholder="Course">
+
+        <select id="spaceType" class="form-control">
+            <option value="1">Regular Lounge</option>
+            <option value="2">Premium Lounge</option>
+            <option value="3">Boardroom</option>
+        </select>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="checkinCustomer()">Check In</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- FLOATING ADD BUTTON -->
+<button id="floatingAddBtn"
+    class="btn btn-success"
+    data-bs-toggle="modal"
+    data-bs-target="#checkinModal">
+    +
+</button>
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script>
+
+let currentFilter = "all";
+
+// FILTER
+function setFilter(spaceType, btn) {
+    currentFilter = spaceType;
+
+    document.querySelectorAll(".sidebar-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    loadSessions();
+}
+
+
+// FORMAT TIME
+function formatTime(seconds) {
+    let hrs = Math.floor(seconds / 3600);
+    let mins = Math.floor((seconds % 3600) / 60);
+    let secs = seconds % 60;
+
+    return `${hrs.toString().padStart(2, '0')}:` +
+           `${mins.toString().padStart(2, '0')}:` +
+           `${secs.toString().padStart(2, '0')}`;
+}
+
+
+// CHECK-IN
+function checkinCustomer() {
+
+    let name = document.getElementById("customerName").value;
+    let school = document.getElementById("school").value;
+    let course = document.getElementById("course").value;
+    let spaceType = document.getElementById("spaceType").value;
+
+    if (!name) {
+        alert("Customer name is required");
+        return;
+    }
+
+    fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+            customer_name: name,
+            school: school,
+            course: course,
+            space_type_id: parseInt(spaceType)
+        })
+    })
+    .then(res => res.json())
+    .then(() => {
+
+        let modal = bootstrap.Modal.getInstance(document.getElementById('checkinModal'));
+        modal.hide();
+
+        document.getElementById("customerName").value = "";
+        document.getElementById("school").value = "";
+        document.getElementById("course").value = "";
+
+        loadSessions();
+    });
+}
+
+
+// NAVIGATION
+function goToOrder(sessionId) {
+    window.location.href = `/order/${sessionId}`;
+}
+
+
+// VOID ITEM
+function voidItem(itemId, sessionId) {
+
+    if (!confirm("Remove this item?")) return;
+
+    fetch(`/api/void-item/${itemId}`, {
+        method: "DELETE",
+        credentials: "include"
+    })
+    .then(() => {
+        setTimeout(() => viewOrder(sessionId), 200);
+    });
+}
+
+
+// VIEW ORDER
+function viewOrder(sessionId) {
+
+    fetch(`/api/session-orders/${sessionId}`, { credentials: "include" })
+    .then(res => res.json())
+    .then(orderData => {
+
+        fetch(`/api/preview-checkout/${sessionId}`, { credentials: "include" })
+        .then(res => res.json())
+        .then(data => {
+
+            let itemsHTML = "";
+
+            orderData.orders.forEach(item => {
+                itemsHTML += `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            ${item.item_name} x${item.quantity}
+                            <br>
+                            <small>₱${item.total.toFixed(2)}</small>
+                        </div>
+                        <button class="btn btn-sm btn-danger"
+                            onclick="voidItem(${item.id}, ${sessionId})">
+                            Void
+                        </button>
+                    </div>
+                `;
+            });
+
+            if (!itemsHTML) itemsHTML = "<p>No orders</p>";
+
+            document.getElementById("receipt-body").innerHTML = `
+                <div style="text-align:center;">
+                    <h4>IdeaHub POS</h4>
+                    <hr>
+                </div>
+
+                <p><strong>Customer:</strong> ${data.customer_name}</p>
+                <p><strong>Time Used:</strong> ${formatTime(Math.floor(data.minutes_used * 60))}</p>
+
+                <hr>
+                <h6>Orders:</h6>
+                ${itemsHTML}
+                <hr>
+
+                <p><strong>Time Bill:</strong> ₱${data.time_bill.toFixed(2)}</p>
+                <p><strong>Food Bill:</strong> ₱${data.food_bill.toFixed(2)}</p>
+
+                <hr>
+                <h5>Total: ₱${data.total_bill.toFixed(2)}</h5>
+            `;
+
+            let modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+            modal.show();
+
+            document.getElementById("confirmCheckoutBtn").onclick = function () {
+
+                if (!confirm("Are you sure you want to checkout this customer?")) return;
+
+                fetch(`/api/checkout/${sessionId}`, {
+                    method: "POST",
+                    credentials: "include"
+                })
+                .then(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('receiptModal')).hide();
+                    loadSessions();
+                });
+            };
+
+        });
+
+    });
+}
+
+
+// LOAD SESSIONS
+function loadSessions() {
+
+    fetch("/api/active-sessions", { credentials: "include" })
+    .then(res => res.json())
+    .then(data => {
+
+        let container = document.getElementById("sessions-container");
+        let emptyMsg = document.getElementById("empty-message");
+        let search = document.getElementById("searchInput").value.toLowerCase();
+
+        container.innerHTML = "";
+
+        let visibleCount = 0;
+
+        data.forEach(session => {
+
+            if (currentFilter !== "all" && session.space_type !== currentFilter) return;
+
+            if (!session.customer_name.toLowerCase().includes(search)) return;
+
+            visibleCount++;
+
+            container.innerHTML += `
+                <div class="col-md-4 mb-3">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+
+                            <h5>${session.customer_name}</h5>
+
+                            <p><strong>School:</strong> ${session.school || "N/A"}</p>
+                            <p><strong>Course:</strong> ${session.course || "N/A"}</p>
+
+                            <p><strong>Space:</strong> ${session.space_type}</p>
+                            <p><strong>Time In:</strong> ${session.time_in}</p>
+
+                            <p><strong>Duration:</strong> ${formatTime(session.seconds_used)}</p>
+                            <p><strong>Bill:</strong> ₱${session.current_bill.toFixed(2)}</p>
+
+                            <div class="d-flex gap-2 mt-3">
+
+                                <button class="btn btn-primary btn-sm w-100"
+                                    onclick="goToOrder(${session.session_id})">
+                                    Add Order
+                                </button>
+
+                                <button class="btn btn-warning btn-sm w-100"
+                                    onclick="viewOrder(${session.session_id})">
+                                    View Order
+                                </button>
+
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById("session-count").innerText = `${visibleCount} customer(s)`;
+
+        emptyMsg.style.display = visibleCount === 0 ? "block" : "none";
+
+    });
+}
+
+
+// INIT
+loadSessions();
+setInterval(loadSessions, 5000);
+
+</script>
+
+{% endblock %}

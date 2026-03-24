@@ -1,0 +1,124 @@
+{% extends "auth_layout.html" %}
+
+{% block title %}
+IdeaHub POS Login
+{% endblock %}
+
+{% block content %}
+
+<div class="login-wrapper">
+
+<div class="login-card">
+
+<div class="text-center mb-4">
+
+<i class="bi bi-lightbulb-fill logo-icon"></i>
+
+<h2 class="brand-title mt-2">
+IdeaHub POS
+</h2>
+
+<p class="brand-subtitle">
+Smart Workspace Management System
+</p>
+
+</div>
+
+<!--Flash Message-->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+
+      <div id="flash-message" class="alert alert-{{ category }} text-center">
+        {{ message }}
+      </div>
+
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<form id="loginForm">
+
+<div class="mb-3">
+
+<label class="form-label">Username</label>
+
+<input type="text" class="form-control" id="username" required>
+
+</div>
+
+<div class="mb-4">
+
+<label class="form-label">Password</label>
+
+<input type="password" class="form-control" id="password" required>
+
+</div>
+
+<button class="btn btn-login w-100" id="loginBtn">
+Login
+</button>
+
+</form>
+
+</div>
+
+</div>
+
+<script>
+
+document.getElementById("loginForm").addEventListener("submit", async function(e){
+
+e.preventDefault()
+
+const username = document.getElementById("username").value
+const password = document.getElementById("password").value
+
+const response = await fetch("/api/login",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body: JSON.stringify({
+username: username,
+password: password
+})
+
+})
+
+const data = await response.json()
+
+if(response.ok){
+
+alert("Login successful!")
+
+window.location.href = "/dashboard"
+
+}else{
+
+alert(data.error)
+
+}
+
+})
+
+</script>
+
+<script>
+    setTimeout(function () {
+        let flash = document.getElementById("flash-message");
+        if (flash) {
+            flash.style.transition = "opacity 0.5s ease";
+            flash.style.opacity = "0";
+
+            setTimeout(() => {
+                flash.remove();
+            }, 500);
+        }
+    }, 10000);
+</script>
+
+{% endblock %}
